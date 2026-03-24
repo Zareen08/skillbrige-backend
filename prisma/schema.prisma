@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TUTOR
+  ADMIN
+}
+
+enum BookingStatus {
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          Role      @default(STUDENT)
+  isActive      Boolean   @default(true)
+  avatar        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  studentProfile StudentProfile?
+  tutorProfile   TutorProfile?
+
+  studentBookings Booking[] @relation("StudentBookings")
+  tutorBookings   Booking[] @relation("TutorBookings")
+
+  studentReviews  Review[]  @relation("StudentReviews")
+  tutorReviews    Review[]  @relation("TutorReviews")
+}
+
+model StudentProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  phone       String?
+  education   String?
+  interests   String[]
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TutorProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  title       String
+  bio         String
+  subjects    String[]
+  hourlyRate  Float
+  experience  Int
+  education   String
+  availability Json?
+  rating      Float    @default(0)
+  totalReviews Int     @default(0)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  icon        String?
+  createdAt   DateTime @default(now())
+}
+
+model Booking {
+  id            String        @id @default(cuid())
+  studentId     String
+  tutorId       String
+  date          DateTime
+  duration      Int           // in minutes
+  totalAmount   Float
+  status        BookingStatus @default(CONFIRMED)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  student       User          @relation("StudentBookings", fields: [studentId], references: [id])
+  tutor         User          @relation("TutorBookings", fields: [tutorId], references: [id])
+  review        Review?
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  rating      Int
+  comment     String
+  studentId   String
+  tutorId     String
+  bookingId   String   @unique
+  createdAt   DateTime @default(now())
+  
+  student     User     @relation("StudentReviews", fields: [studentId], references: [id])
+  tutor       User     @relation("TutorReviews", fields: [tutorId], references: [id])
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+}
