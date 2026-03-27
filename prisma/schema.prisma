@@ -61,8 +61,8 @@ model TutorProfile {
   availability Json?
   rating      Float    @default(0)
   totalReviews Int     @default(0)
+
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bookings    Booking[]
 }
 
 model Category {
@@ -78,16 +78,22 @@ model Booking {
   studentId     String
   tutorId       String
   date          DateTime
-  duration      Int           // in minutes
+  duration      Int
   totalAmount   Float
   status        BookingStatus @default(CONFIRMED)
   notes         String?
+  isReviewed    Boolean       @default(false)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   
-  student       User          @relation("StudentBookings", fields: [studentId], references: [id])
-  tutor         User          @relation("TutorBookings", fields: [tutorId], references: [id])
+  student       User @relation("StudentBookings", fields: [studentId], references: [id])
+  tutor         User @relation("TutorBookings", fields: [tutorId], references: [id])
+
   review        Review?
+
+  @@unique([tutorId, date])   // prevent double booking
+  @@index([studentId])
+  @@index([tutorId])
 }
 
 model Review {
@@ -99,7 +105,7 @@ model Review {
   bookingId   String   @unique
   createdAt   DateTime @default(now())
   
-  student     User     @relation("StudentReviews", fields: [studentId], references: [id])
-  tutor       User     @relation("TutorReviews", fields: [tutorId], references: [id])
-  booking     Booking  @relation(fields: [bookingId], references: [id])
+  student     User @relation("StudentReviews", fields: [studentId], references: [id])
+  tutor       User @relation("TutorReviews", fields: [tutorId], references: [id])
+  booking     Booking @relation(fields: [bookingId], references: [id])
 }
