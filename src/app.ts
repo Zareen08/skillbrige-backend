@@ -8,41 +8,51 @@ import bookingRoutes from './routes/bookings';
 import reviewRoutes from './routes/reviews';
 import categoryRoutes from './routes/categories';
 import adminRoutes from './routes/admin';
-
-// Import middleware
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
 
 const app = express();
 
-// Middleware
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'],
-  credentials: true
-}));
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+  : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      console.log(`CORS blocked: ${origin}`);
+      callback(new Error(`CORS policy: origin "${origin}" is not allowed`));
+    },
+    credentials: true,
+  })
+);
+
+// Body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`📝 ${req.method} ${req.url}`);
+// Request logging
+app.use((req, _res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
-// Health check endpoint
-app.get('/health', (req, res) => {
+// Health check
+app.get('/health', (_req, res) => {
   res.json({
     success: true,
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
   });
 });
 
 // Root endpoint
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.json({
     success: true,
     message: 'SkillBridge API Server',
@@ -54,37 +64,25 @@ app.get('/', (req, res) => {
       bookings: '/api/bookings',
       reviews: '/api/reviews',
       categories: '/api/categories',
-      admin: '/api/admin'
-    }
+      admin: '/api/admin',
+    },
   });
 });
 
-// Auth routes 
+// API Routes
 app.use('/api/auth', authRoutes);
-
-// User routes 
 app.use('/api/users', userRoutes);
-
-// Tutor routes 
 app.use('/api/tutors', tutorRoutes);
-
-// Booking routes 
 app.use('/api/bookings', bookingRoutes);
-
-// Review routes 
 app.use('/api/reviews', reviewRoutes);
-
-// Category routes 
 app.use('/api/categories', categoryRoutes);
-
-// Admin routes 
 app.use('/api/admin', adminRoutes);
 
-// 404 handler for undefined routes
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route ${req.method} ${req.url} not found`
+    message: `Route ${req.method} ${req.url} not found`,
   });
 });
 

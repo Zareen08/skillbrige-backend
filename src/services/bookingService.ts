@@ -14,37 +14,52 @@ export class BookingService {
         where: { id: data.tutorId },
         include: { tutorProfile: true }
       });
-      
+
       if (!tutor || tutor.role !== 'TUTOR') {
         throw new Error('Tutor not found');
       }
-      
+
       if (!tutor.isActive) {
         throw new Error('Tutor account is inactive');
       }
-      
+
       if (!tutor.tutorProfile) {
         throw new Error('Tutor profile not found');
       }
-      
-      // Check if tutor is available 
-      const existingBooking = await prisma.booking.findFirst({
+
+      const newStart = data.date;
+      const newEnd   = new Date(newStart.getTime() + data.duration * 60_000);
+
+      const conflictingBooking = await prisma.booking.findFirst({
         where: {
           tutorId: data.tutorId,
-          date: data.date,
-          status: {
-            not: 'CANCELLED' 
-          }
-        }
+          status: { not: 'CANCELLED' },
+          date: { lt: newEnd },
+          AND: [
+            {
+              date: {
+                gte: new Date(newStart.getTime() - 8 * 60 * 60_000), 
+              },
+            },
+          ],
+        },
+        include: { id: true, date: true, duration: true } as any,
       });
-      
-      if (existingBooking) {
-        throw new Error('Tutor is already booked at this time');
+
+      // Secondary precise check
+      if (conflictingBooking) {
+        const existingEnd = new Date(
+          (conflictingBooking as any).date.getTime() +
+          (conflictingBooking as any).duration * 60_000
+        );
+        if (existingEnd > newStart) {
+          throw new Error('Tutor is already booked at this time');
+        }
       }
-      
+
       // Calculate total amount
       const totalAmount = (tutor.tutorProfile.hourlyRate * data.duration) / 60;
-      
+
       // Create booking
       const booking = await prisma.booking.create({
         data: {
@@ -59,11 +74,11 @@ export class BookingService {
         },
         include: {
           student: {
-            select: { 
+            select: {
               id: true,
-              name: true, 
-              email: true, 
-              avatar: true 
+              name: true,
+              email: true,
+              avatar: true
             }
           },
           tutor: {
@@ -73,28 +88,28 @@ export class BookingService {
               email: true,
               avatar: true,
               tutorProfile: {
-                select: { 
+                select: {
                   id: true,
-                  title: true, 
-                  hourlyRate: true 
+                  title: true,
+                  hourlyRate: true
                 }
               }
             }
           }
         }
       });
-      
+
       return booking;
     } catch (error: any) {
       console.error('Error in createBooking:', error);
       throw error;
     }
   }
-  
+
   static async getUserBookings(userId: string, role: string) {
     try {
       const where: any = {};
-      
+
       if (role === 'STUDENT') {
         where.studentId = userId;
       } else if (role === 'TUTOR') {
@@ -102,16 +117,16 @@ export class BookingService {
       } else {
         throw new Error('Invalid role');
       }
-      
+
       const bookings = await prisma.booking.findMany({
         where,
         include: {
           student: {
-            select: { 
+            select: {
               id: true,
-              name: true, 
-              email: true, 
-              avatar: true 
+              name: true,
+              email: true,
+              avatar: true
             }
           },
           tutor: {
@@ -121,9 +136,9 @@ export class BookingService {
               email: true,
               avatar: true,
               tutorProfile: {
-                select: { 
+                select: {
                   id: true,
-                  title: true 
+                  title: true
                 }
               }
             }
@@ -132,26 +147,26 @@ export class BookingService {
         },
         orderBy: { date: 'desc' }
       });
-      
+
       return bookings;
     } catch (error: any) {
       console.error('Error in getUserBookings:', error);
       throw error;
     }
   }
-  
+
   static async getBookingById(bookingId: string, userId: string, role: string) {
     try {
       const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
         include: {
           student: {
-            select: { 
+            select: {
               id: true,
-              name: true, 
-              email: true, 
+              name: true,
+              email: true,
               avatar: true,
-              studentProfile: true 
+              studentProfile: true
             }
           },
           tutor: {
@@ -166,23 +181,23 @@ export class BookingService {
           review: true,
         }
       });
-      
+
       if (!booking) {
         throw new Error('Booking not found');
       }
-      
+
       // Check if user has access
       if (role !== 'ADMIN' && booking.studentId !== userId && booking.tutorId !== userId) {
         throw new Error('You do not have permission to view this booking');
       }
-      
+
       return booking;
     } catch (error: any) {
       console.error('Error in getBookingById:', error);
       throw error;
     }
   }
-  
+
   static async updateStatus(bookingId: string, newStatus: string, userId: string, role: string) {
     try {
       // Validate status
@@ -190,7 +205,7 @@ export class BookingService {
       if (!validStatuses.includes(newStatus)) {
         throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
       }
-      
+
       // Check if booking exists
       const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
@@ -201,33 +216,33 @@ export class BookingService {
           }
         }
       });
-      
+
       if (!booking) {
         throw new Error('Booking not found');
       }
-      
+
       // Check permissions
       if (role === 'STUDENT' && booking.studentId !== userId) {
         throw new Error('You can only update your own bookings');
       }
-      
+
       if (role === 'TUTOR' && booking.tutorId !== userId) {
         throw new Error('You can only update bookings for your sessions');
       }
-      
-      // Prevent invalid status transitions
+
+      // Prevent invalid status 
       if (booking.status === 'COMPLETED') {
         throw new Error('Cannot update a completed booking');
       }
-      
+
       if (booking.status === 'CANCELLED') {
         throw new Error('Cannot update a cancelled booking');
       }
-      
+
       // Update booking
       const updatedBooking = await prisma.booking.update({
         where: { id: bookingId },
-        data: { 
+        data: {
           status: newStatus as any,
           updatedAt: new Date()
         },
@@ -258,86 +273,51 @@ export class BookingService {
           review: true,
         }
       });
-      
-      // If completed, update tutor rating
+
       if (newStatus === 'COMPLETED') {
         await this.updateTutorRating(booking.tutorId);
       }
-      
+
       return updatedBooking;
     } catch (error: any) {
       console.error('Error in updateStatus:', error);
       throw error;
     }
   }
-  
+
+  // Delegates to ReviewService 
   static async updateTutorRating(tutorId: string) {
-    try {
-      // Get all completed reviews for this tutor
-      const reviews = await prisma.review.findMany({
-        where: { 
-          tutorId,
-          booking: {
-            status: 'COMPLETED'
-          }
-        }
-      });
-      
-      if (reviews.length > 0) {
-        const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-        const avgRating = totalRating / reviews.length;
-        
-        // Update tutor profile
-        await prisma.tutorProfile.update({
-          where: { userId: tutorId },
-          data: {
-            rating: avgRating,
-            totalReviews: reviews.length,
-          }
-        });
-      } else {
-        // Reset rating if no reviews
-        await prisma.tutorProfile.update({
-          where: { userId: tutorId },
-          data: {
-            rating: 0,
-            totalReviews: 0,
-          }
-        });
-      }
-    } catch (error: any) {
-      console.error('Error in updateTutorRating:', error);
-      throw error;
-    }
+    const { ReviewService } = await import('./reviewService');
+    await ReviewService.updateTutorRating(tutorId);
   }
-  
+
   static async cancelBooking(bookingId: string, userId: string, role: string, reason?: string) {
     try {
       const booking = await prisma.booking.findUnique({
         where: { id: bookingId }
       });
-      
+
       if (!booking) {
         throw new Error('Booking not found');
       }
-      
+
       // Check permissions
       if (role === 'STUDENT' && booking.studentId !== userId) {
         throw new Error('You can only cancel your own bookings');
       }
-      
+
       if (role === 'TUTOR' && booking.tutorId !== userId) {
         throw new Error('You can only cancel bookings for your sessions');
       }
-      
+
       if (booking.status === 'COMPLETED') {
         throw new Error('Cannot cancel a completed booking');
       }
-      
+
       if (booking.status === 'CANCELLED') {
         throw new Error('Booking is already cancelled');
       }
-      
+
       const cancelledBooking = await prisma.booking.update({
         where: { id: bookingId },
         data: {
@@ -346,23 +326,21 @@ export class BookingService {
           updatedAt: new Date()
         }
       });
-      
+
       return cancelledBooking;
     } catch (error: any) {
       console.error('Error in cancelBooking:', error);
       throw error;
     }
   }
-  
+
   static async getUpcomingBookings(userId: string, role: string) {
     try {
       const where: any = {
-        date: {
-          gte: new Date()
-        },
+        date: { gte: new Date() },
         status: 'CONFIRMED'
       };
-      
+
       if (role === 'STUDENT') {
         where.studentId = userId;
       } else if (role === 'TUTOR') {
@@ -370,16 +348,16 @@ export class BookingService {
       } else {
         throw new Error('Invalid role');
       }
-      
+
       const bookings = await prisma.booking.findMany({
         where,
         include: {
           student: {
-            select: { 
+            select: {
               id: true,
-              name: true, 
-              email: true, 
-              avatar: true 
+              name: true,
+              email: true,
+              avatar: true
             }
           },
           tutor: {
@@ -389,9 +367,9 @@ export class BookingService {
               email: true,
               avatar: true,
               tutorProfile: {
-                select: { 
+                select: {
                   id: true,
-                  title: true 
+                  title: true
                 }
               }
             }
@@ -400,26 +378,24 @@ export class BookingService {
         },
         orderBy: { date: 'asc' }
       });
-      
+
       return bookings;
     } catch (error: any) {
       console.error('Error in getUpcomingBookings:', error);
       throw error;
     }
   }
-  
+
   static async getPastBookings(userId: string, role: string) {
     try {
       const where: any = {
-        date: {
-          lt: new Date()
-        },
+        date: { lt: new Date() },
         OR: [
           { status: 'COMPLETED' },
           { status: 'CANCELLED' }
         ]
       };
-      
+
       if (role === 'STUDENT') {
         where.studentId = userId;
       } else if (role === 'TUTOR') {
@@ -427,16 +403,16 @@ export class BookingService {
       } else {
         throw new Error('Invalid role');
       }
-      
+
       const bookings = await prisma.booking.findMany({
         where,
         include: {
           student: {
-            select: { 
+            select: {
               id: true,
-              name: true, 
-              email: true, 
-              avatar: true 
+              name: true,
+              email: true,
+              avatar: true
             }
           },
           tutor: {
@@ -446,9 +422,9 @@ export class BookingService {
               email: true,
               avatar: true,
               tutorProfile: {
-                select: { 
+                select: {
                   id: true,
-                  title: true 
+                  title: true
                 }
               }
             }
@@ -457,7 +433,7 @@ export class BookingService {
         },
         orderBy: { date: 'desc' }
       });
-      
+
       return bookings;
     } catch (error: any) {
       console.error('Error in getPastBookings:', error);

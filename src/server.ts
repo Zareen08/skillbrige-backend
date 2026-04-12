@@ -3,6 +3,7 @@ import app from './app';
 const PORT = process.env.PORT || 5000;
 
 // Start server
+if (process.env.NODE_ENV !== 'production') {
 const server = app.listen(PORT, () => {
   console.log(`\n${'='.repeat(60)}`);
   console.log(` SkillBridge Server Started Successfully!`);
@@ -36,5 +37,6 @@ process.on('SIGINT', () => {
     console.log('HTTP server closed');
   });
 });
+}
 
-export default server;
+export default app;
